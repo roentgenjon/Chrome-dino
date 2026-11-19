@@ -161,7 +161,7 @@
   function update() {
     if (state !== 'run') { if (state === 'over') frame++; return; }
     frame++;
-    speed = Math.min(22, 9 + score / 250);
+    speed = Math.min(22, 9 + Math.floor(score / 100) * 0.5);
     score += speed * 0.1;
 
     dino.vy += 0.8; dino.y += dino.vy;
