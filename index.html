@@ -97,7 +97,7 @@
 
   function reset() {
     dino = { x: 40, y: GROUND - DINO.length * S, vy: 0, duck: false, onGround: true };
-    obstacles = []; speed = 6; score = 0; frame = 0; nextSpawn = 60; groundX = 0; flash = 0;
+    obstacles = []; speed = 9; score = 0; frame = 0; nextSpawn = 60; groundX = 0; flash = 0;
     clouds = [{ x: 300, y: 50 }, { x: 650, y: 80 }];
     state = 'run';
   }
@@ -108,7 +108,7 @@
       if (state === 'over' && frame < 20) return;
       reset(); state = 'run';
     }
-    if (dino.onGround && state === 'run') { dino.vy = -12.5; dino.onGround = false; }
+    if (dino.onGround && state === 'run') { dino.vy = -14; dino.onGround = false; }
   }
 
   addEventListener('keydown', e => {
@@ -161,10 +161,10 @@
   function update() {
     if (state !== 'run') { if (state === 'over') frame++; return; }
     frame++;
-    speed = Math.min(14, 6 + score / 400);
+    speed = Math.min(22, 9 + score / 250);
     score += speed * 0.1;
 
-    dino.vy += 0.65; dino.y += dino.vy;
+    dino.vy += 0.8; dino.y += dino.vy;
     const floor = GROUND - DINO.length * S;
     if (dino.y >= floor) { dino.y = floor; dino.vy = 0; dino.onGround = true; }
 
