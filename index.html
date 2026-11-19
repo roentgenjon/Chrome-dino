@@ -220,7 +220,8 @@
     }
   }
 
-  function loop() { update(); render(); requestAnimationFrame(loop); }
+  const TIME_SCALE = 10; // 1 = normal, 10 = zehnmal schneller
+  function loop() { for (let i = 0; i < TIME_SCALE; i++) update(); render(); requestAnimationFrame(loop); }
   loop();
 })();
 </script>
