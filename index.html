@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Chrome Dino</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #f7f7f7; color: #535353;
+    font-family: monospace; overflow: hidden; touch-action: manipulation; user-select: none; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  canvas { width: min(96vw, 900px); height: auto; background: #fff; border-bottom: 1px solid #ddd; image-rendering: pixelated; }
+  p { margin: 12px; font-size: 14px; text-align: center; }
+</style>
+</head>
+<body>
+<canvas id="c" width="900" height="260"></canvas>
+<p>Leertaste / ↑ / Tippen = Springen · ↓ = Ducken · Neustart: gleiche Taste</p>
+<script>
+(() => {
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height, GROUND = 210;
+  const FG = '#535353';
+  let best = +(localStorage.getItem('dinoBest') || 0);
+
+  // Pixel-Sprites (1 = gefüllt)
+  const DINO = [
+    "          ########",
+    "          ##.#####",
+    "          ########",
+    "          ########",
+    "          ###     ",
+    "          ######  ",
+    "#        #####    ",
+    "#      #######  # ",
+    "##    ##########  ",
+    "###  ############ ",
+    " ################ ",
+    "  ##############  ",
+    "   ############   ",
+    "    ##########    ",
+    "     ####  ###    ",
+    "     ###    ##    ",
+    "     ##     #     ",
+    "     ###    ###   "
+  ];
+  const DINO_DUCK = [
+    "                    ########  ",
+    "                    ##.#####  ",
+    "                    ########  ",
+    "#       ##############   ###  ",
+    "##    ################ ####   ",
+    "###  ####################    ",
+    " ##########################   ",
+    "  #########################   ",
+    "   ####################       ",
+    "     ####  ###                ",
+    "     ###    ##                ",
+    "     ###    ###               "
+  ];
+  const BIRD = [
+    "      ##          ",
+    "     ###          ",
+    "    ####          ",
+    "   #####       ###",
+    "  ######     #####",
+    " ########  #######",
+    "###################",
+    "  ##############   ",
+    "    ##########     ",
+    "       ###         "
+  ];
+  const BIRD2 = [
+    "                  ",
+    "                  ",
+    "         ##       ",
+    "  ##    ####      ",
+    " ###  #######  ###",
+    "###################",
+    "###################",
+    "  ##############   ",
+    "    ##########     ",
+    "       ###         "
+  ];
+
+  function draw(sprite, x, y, s) {
+    ctx.fillStyle = FG;
+    for (let r = 0; r < sprite.length; r++)
+      for (let c = 0; c < sprite[r].length; c++) {
+        const ch = sprite[r][c];
+        if (ch === '#') ctx.fillRect(Math.round(x + c * s), Math.round(y + r * s), s, s);
+      }
+  }
+  const sw = sp => Math.max(...sp.map(r => r.length));
+
+  const S = 3; // Pixelgröße
+  let state, dino, obstacles, speed, score, frame, nextSpawn, clouds, groundX, flash;
+
+  function reset() {
+    dino = { x: 40, y: GROUND - DINO.length * S, vy: 0, duck: false, onGround: true };
+    obstacles = []; speed = 6; score = 0; frame = 0; nextSpawn = 60; groundX = 0; flash = 0;
+    clouds = [{ x: 300, y: 50 }, { x: 650, y: 80 }];
+    state = 'run';
+  }
+  reset(); state = 'idle';
+
+  function jump() {
+    if (state === 'idle' || state === 'over') {
+      if (state === 'over' && frame < 20) return;
+      reset(); state = 'run';
+    }
+    if (dino.onGround && state === 'run') { dino.vy = -12.5; dino.onGround = false; }
+  }
+
+  addEventListener('keydown', e => {
+    if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); jump(); }
+    if (e.code === 'ArrowDown') { e.preventDefault(); dino.duck = true; if (!dino.onGround) dino.vy = Math.max(dino.vy, 8); }
+  });
+  addEventListener('keyup', e => { if (e.code === 'ArrowDown') dino.duck = false; });
+  cv.addEventListener('pointerdown', e => { e.preventDefault(); jump(); });
+
+  function spawn() {
+    const r = Math.random();
+    if (score > 300 && r < 0.25) {
+      const ys = [GROUND - 20 - 14 * S / 1, GROUND - 14 - BIRD.length * S, GROUND - 45 - BIRD.length * S];
+      const h = BIRD.length * S;
+      const levels = [GROUND - h - 4, GROUND - h - 30, GROUND - h - 55];
+      obstacles.push({ type: 'bird', x: W + 20, y: levels[Math.floor(Math.random() * 3)], w: sw(BIRD) * S, h });
+    } else {
+      const n = 1 + Math.floor(Math.random() * (score > 500 ? 3 : 2));
+      const big = Math.random() < 0.5;
+      const ch = (big ? 17 : 12) * S, cw = 5 * S;
+      obstacles.push({ type: 'cactus', x: W + 20, y: GROUND - ch, w: cw * n + (n - 1) * 2, h: ch, n, cw, big });
+    }
+    nextSpawn = 40 + Math.random() * 60 + speed * 6;
+  }
+
+  function drawCactus(o) {
+    ctx.fillStyle = FG;
+    for (let i = 0; i < o.n; i++) {
+      const x = o.x + i * (o.cw + 2), y = o.y, w = o.cw, h = o.h;
+      ctx.fillRect(x + w / 3, y, w / 3 + 2, h);               // Stamm
+      ctx.fillRect(x, y + h * 0.3, w / 3, 3);                  // linker Arm
+      ctx.fillRect(x, y + h * 0.15, 3, h * 0.2);
+      ctx.fillRect(x + w, y + h * 0.4, -w / 3 + 2, 3);         // rechter Arm
+      ctx.fillRect(x + w + 2, y + h * 0.25, 3, h * 0.2);
+    }
+  }
+
+  function hitbox(o) {
+    if (o.type === 'cactus') return { x: o.x + 3, y: o.y + 2, w: o.w - 6, h: o.h - 2 };
+    return { x: o.x + 6, y: o.y + 6, w: o.w - 12, h: o.h - 12 };
+  }
+  function dinoBox() {
+    const sp = dino.duck && dino.onGround ? DINO_DUCK : DINO;
+    const h = sp.length * S, w = sw(sp) * S;
+    const y = dino.duck && dino.onGround ? GROUND - h : dino.y;
+    return { x: dino.x + 6, y: y + 4, w: w - 14, h: h - 8, sp, drawY: y };
+  }
+  const hit = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+  function update() {
+    if (state !== 'run') { if (state === 'over') frame++; return; }
+    frame++;
+    speed = Math.min(14, 6 + score / 400);
+    score += speed * 0.1;
+
+    dino.vy += 0.65; dino.y += dino.vy;
+    const floor = GROUND - DINO.length * S;
+    if (dino.y >= floor) { dino.y = floor; dino.vy = 0; dino.onGround = true; }
+
+    nextSpawn--; if (nextSpawn <= 0) spawn();
+    obstacles.forEach(o => o.x -= speed);
+    obstacles = obstacles.filter(o => o.x + o.w > -20);
+    clouds.forEach(c => { c.x -= speed * 0.2; if (c.x < -60) { c.x = W + 20; c.y = 30 + Math.random() * 70; } });
+    groundX = (groundX + speed) % 40;
+
+    const db = dinoBox();
+    if (obstacles.some(o => hit(db, hitbox(o)))) {
+      state = 'over'; frame = 0;
+      if (score > best) { best = score; try { localStorage.setItem('dinoBest', Math.floor(best)); } catch (_) {} }
+    }
+    // Blinken bei 100er-Marken
+    if (Math.floor(score) % 100 === 0 && score > 1 && flash <= 0) flash = 20;
+    if (flash > 0) flash--;
+  }
+
+  const pad = n => String(Math.floor(n)).padStart(5, '0');
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    // Wolken
+    ctx.fillStyle = '#ddd';
+    clouds.forEach(c => { ctx.fillRect(c.x, c.y, 46, 10); ctx.fillRect(c.x + 10, c.y - 8, 24, 8); });
+    // Boden
+    ctx.fillStyle = FG; ctx.fillRect(0, GROUND, W, 2);
+    ctx.fillStyle = '#999';
+    for (let x = -groundX; x < W; x += 40) { ctx.fillRect(x + 8, GROUND + 8, 6, 2); ctx.fillRect(x + 28, GROUND + 15, 3, 2); }
+    // Hindernisse
+    obstacles.forEach(o => {
+      if (o.type === 'cactus') drawCactus(o);
+      else draw(Math.floor(frame / 8) % 2 ? BIRD : BIRD2, o.x, o.y, S);
+    });
+    // Dino
+    const db = dinoBox();
+    let sp = db.sp;
+    draw(sp, dino.x, db.drawY, S);
+    if (state === 'over') { ctx.fillStyle = '#fff'; ctx.fillRect(dino.x + 11 * S, db.drawY + S, S, S); ctx.fillStyle = FG; ctx.fillRect(dino.x + 11 * S, db.drawY + S, S, S); }
+    // Score
+    ctx.font = '20px monospace'; ctx.textAlign = 'right';
+    ctx.fillStyle = flash > 0 && flash % 6 < 3 ? '#fff' : FG;
+    ctx.fillText(pad(score), W - 16, 30);
+    ctx.fillStyle = '#999'; ctx.fillText('HI ' + pad(best), W - 110, 30);
+    // Meldungen
+    ctx.textAlign = 'center'; ctx.fillStyle = FG;
+    if (state === 'idle') { ctx.font = '22px monospace'; ctx.fillText('LEERTASTE ZUM STARTEN', W / 2, 110); }
+    if (state === 'over') {
+      ctx.font = '32px monospace'; ctx.fillText('G A M E   O V E R', W / 2, 100);
+      ctx.font = '16px monospace'; ctx.fillText('Taste drücken zum Neustart', W / 2, 130);
+    }
+  }
+
+  function loop() { update(); render(); requestAnimationFrame(loop); }
+  loop();
+})();
+</script>
+</body>
+</html>
